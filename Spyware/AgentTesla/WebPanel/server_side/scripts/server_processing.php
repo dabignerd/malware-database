@@ -1,0 +1,65 @@
+<?php
+	session_start();
+	if (!isset($_SESSION['logged_in']) 
+		|| $_SESSION['logged_in'] !== true) {
+		header('Location: login.php');
+		exit;
+	}
+	
+/*
+ * DataTables example server-side processing script.
+ *
+ * Please note that this script is intentionally extremely simply to show how
+ * server-side processing can be implemented, and probably shouldn't be used as
+ * the basis for a large complex system. It is suitable for simple use cases as
+ * for learning.
+ *
+ * See http://datatables.net/usage/server-side for full details on the server-
+ * side processing requirements of DataTables.
+ *
+ * @license MIT - http://datatables.net/license_mit
+ */
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * Easy set variables
+ */
+ 
+mb_internal_encoding('UTF-8');
+
+// DB table to use
+$table = $_GET['table'];
+
+// Table's primary key
+$primaryKey = $_GET['primary'];
+
+if(isset($_GET['where'])){
+	$where = base64_decode($_GET['where']);
+}else{
+	$where = "";
+}
+
+
+$idArray = unserialize(urldecode($_GET['clmns']));
+
+// SQL server connection information
+require('../../config.php');
+$sql_details = array(
+	'user' => $mysql_user,
+	'pass' => $mysql_password,
+	'db'   => $mysql_database,
+	'host' => $mysql_host
+);
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * If you just want to use the basic configuration for DataTables with PHP
+ * server-side, there is no need to edit below this line.
+ */
+
+require( 'ssp.class.php' );
+
+echo json_encode(
+	SSP::complex( $_GET, $sql_details, $table, $primaryKey, $idArray, NULL, $where)
+);
+
+?>
